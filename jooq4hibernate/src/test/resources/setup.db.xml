@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<dataset>
+  <address id_address="10" street="permanent"/>
+  <address id_address="20" street="current"/>
+  <employee id_employee="1" firstname="firstname1" lastname="lastname1" permanent_address_id="10" current_address_id="20" />
+  <employee id_employee="2" firstname="firstname1" lastname="lastname1" permanent_address_id="20" current_address_id="10" />
+</dataset>

@@ -1,0 +1,278 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>com.fhoster.jooq4hibernate</groupId>
+	<artifactId>com.fhoster.jooq4hibernate</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+
+	<properties>
+		<!-- 4.1.8.Final works too (it needs different SessionFactory creation), 5.0.0.Beta1, actually doesn't work due to (maybe?) wrong hibernate configuration (something changed?), it doesn't recognize any table entities -->
+		<hibernate.version>4.3.8.Final</hibernate.version>
+		<hibernate.tools.version>4.3.1.CR1</hibernate.tools.version>
+		<jooq.version>3.4.2</jooq.version>
+		<slf4j.version>1.7.7</slf4j.version>
+		<hsqldb.version>2.3.2</hsqldb.version>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>ch.qos.logback</groupId>
+			<artifactId>logback-classic</artifactId>
+			<version>1.1.3</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.hibernate</groupId>
+			<artifactId>hibernate-core</artifactId>
+			<version>${hibernate.version}</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>18.0</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jooq</groupId>
+			<artifactId>jooq</artifactId>
+			<version>${jooq.version}</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>4.12</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
+			<version>1.2.0</version>
+			<scope>test</scope>
+		</dependency>
+				
+		<dependency>
+			<groupId>org.hsqldb</groupId>
+			<artifactId>hsqldb</artifactId>
+			<version>${hsqldb.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.dbunit</groupId>
+			<artifactId>dbunit</artifactId>
+			<version>2.5.1</version>
+			<scope>test</scope>
+		</dependency>
+<!-- 		<dependency> -->
+<!-- 			<groupId>com.h2database</groupId> -->
+<!-- 			<artifactId>h2</artifactId> -->
+<!-- 			<version>1.4.187</version> -->
+<!-- 			<scope>test</scope> -->
+<!-- 		</dependency> -->
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-antrun-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>generate-test-sql-scripts</id>
+						<phase>generate-test-sources</phase>
+						<goals>
+							<goal>run</goal>
+						</goals>
+						<configuration>
+							<tasks>
+								<property name="maven_test_classpath" refid="maven.test.classpath" />
+								<path id="hibernate_tools_path">
+									<pathelement path="${maven_test_classpath}" />
+								</path>
+								<property name="hibernate_tools_classpath" refid="hibernate_tools_path" />
+								<taskdef name="hibernatetool" classname="org.hibernate.tool.ant.HibernateToolTask" />
+								<delete dir="${basedir}/src/test/resources/hsqldb"/>
+								<mkdir dir="${basedir}/src/test/resources/hsqldb" />
+								<hibernatetool destdir="${basedir}/src/test/resources/hsqldb">
+									<classpath refid="hibernate_tools_path" />
+									<configuration configurationfile="src/test/resources/hibernate.cfg.xml" />
+									<hbm2ddl drop="false" create="true" export="false"
+										outputfilename="ddl.sql" delimiter=";" format="true" />
+								</hibernatetool>
+							</tasks>
+						</configuration>
+					</execution>
+				</executions>
+				<dependencies>
+					<dependency>
+						<groupId>org.hibernate</groupId>
+						<artifactId>hibernate-tools</artifactId>
+						<version>${hibernate.tools.version}</version>
+					</dependency>
+				</dependencies>
+			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>sql-maven-plugin</artifactId>
+				<dependencies>
+					<dependency>
+						<groupId>org.hsqldb</groupId>
+						<artifactId>hsqldb</artifactId>
+						<version>${hsqldb.version}</version>
+					</dependency>
+				</dependencies>
+				<configuration>
+					<driver>org.hsqldb.jdbc.JDBCDriver</driver>
+					<url>jdbc:hsqldb:file:${basedir}/src/test/resources/hsqldb/db;shutdown=true</url>
+					<username>sa</username>
+					<password></password>
+					<autocommit>true</autocommit>
+					<settingsKey>hsql-db-test</settingsKey>
+				</configuration>
+				<executions>
+					<execution>
+						<id>create-test-compile-data</id>
+						<phase>generate-test-sources</phase>
+						<inherited>true</inherited>
+						<goals>
+							<goal>execute</goal>
+						</goals>
+						<configuration>
+							<orderFile>ascending</orderFile>
+							<fileset>
+								<basedir>${basedir}/src/test/resources/hsqldb</basedir>
+								<includes>
+									<include>ddl.sql</include>
+								</includes>
+							</fileset>
+							<autocommit>true</autocommit>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.jooq</groupId>
+				<artifactId>jooq-codegen-maven</artifactId>
+				<executions>
+					<execution>
+						<phase>generate-test-sources</phase>
+						<goals>
+							<goal>generate</goal>
+						</goals>
+					</execution>
+				</executions>
+				<dependencies>
+					<dependency>
+						<groupId>org.hsqldb</groupId>
+						<artifactId>hsqldb</artifactId>
+						<version>${hsqldb.version}</version>
+					</dependency>
+				</dependencies>
+				<configuration>
+					<jdbc>
+						<driver>org.hsqldb.jdbc.JDBCDriver</driver>
+						<url>jdbc:hsqldb:file:${basedir}/src/test/resources/hsqldb/db;shutdown=true</url>
+						<user>sa</user>
+						<password></password>
+					</jdbc>
+					<generator>
+						<name>org.jooq.util.JavaGenerator</name>
+						<database>
+							<name>org.jooq.util.hsqldb.HSQLDBDatabase</name>
+							<includes>.*</includes>
+							<excludes></excludes>
+							<inputSchema>PUBLIC</inputSchema>
+						</database>
+						<generate></generate>
+						<target>
+							<packageName>com.fhoster.jooq4hibernate.jooq</packageName>
+							<directory>${basedir}/src/test/java</directory>
+						</target>
+					</generator>
+				</configuration>
+			</plugin>
+		</plugins>
+		<pluginManagement>
+			<plugins>
+				<plugin>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<version>3.2</version>
+					<configuration>
+						<source>1.6</source>
+						<target>1.6</target>
+					</configuration>
+				</plugin>
+				<!--This plugin's configuration is used to store Eclipse m2e settings 
+					only. It has no influence on the Maven build itself. -->
+				<plugin>
+					<groupId>org.eclipse.m2e</groupId>
+					<artifactId>lifecycle-mapping</artifactId>
+					<version>1.0.0</version>
+					<configuration>
+						<lifecycleMappingMetadata>
+							<pluginExecutions>
+								<pluginExecution>
+									<pluginExecutionFilter>
+										<groupId>
+											org.apache.maven.plugins
+										</groupId>
+										<artifactId>
+											maven-antrun-plugin
+										</artifactId>
+										<versionRange>
+											[1.3,)
+										</versionRange>
+										<goals>
+											<goal>run</goal>
+										</goals>
+									</pluginExecutionFilter>
+									<action>
+										<ignore></ignore>
+									</action>
+								</pluginExecution>
+								<pluginExecution>
+									<pluginExecutionFilter>
+										<groupId>
+											org.codehaus.mojo
+										</groupId>
+										<artifactId>
+											sql-maven-plugin
+										</artifactId>
+										<versionRange>
+											[1.5,)
+										</versionRange>
+										<goals>
+											<goal>execute</goal>
+										</goals>
+									</pluginExecutionFilter>
+									<action>
+										<ignore></ignore>
+									</action>
+								</pluginExecution>
+								<pluginExecution>
+									<pluginExecutionFilter>
+										<groupId>org.jooq</groupId>
+										<artifactId>
+											jooq-codegen-maven
+										</artifactId>
+										<versionRange>
+											[3.5.4,)
+										</versionRange>
+										<goals>
+											<goal>generate</goal>
+										</goals>
+									</pluginExecutionFilter>
+									<action>
+										<ignore></ignore>
+									</action>
+								</pluginExecution>
+							</pluginExecutions>
+						</lifecycleMappingMetadata>
+					</configuration>
+				</plugin>
+			</plugins>
+		</pluginManagement>
+	</build>
+</project>

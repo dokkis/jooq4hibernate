@@ -1,0 +1,4 @@
+To generate the Jooq Metadata from JPA Entity run:
+	mvn generate-test-sources
+	
+Thanks to Vlad Mihalcea for the Jooq Metadata generation from JPA Entity: http://vladmihalcea.com/2013/12/06/jooq-facts-from-jpa-annotations-to-jooq-table-mappings/
