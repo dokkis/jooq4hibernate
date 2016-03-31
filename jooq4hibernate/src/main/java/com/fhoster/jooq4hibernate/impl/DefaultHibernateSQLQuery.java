@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fhoster.jooq4hibernate.HibernateDSLContext;
 import com.fhoster.jooq4hibernate.HibernateSQLQuery;
+import com.fhoster.jooq4hibernate.PartialList;
 
 /**
  * Default implementation of HibernateSQLQuery. It wraps Query class provided by
@@ -28,26 +29,28 @@ class DefaultHibernateSQLQuery implements HibernateSQLQuery {
 	private final static Logger logger = LoggerFactory.getLogger(DefaultHibernateSQLQuery.class);
 	
 	private final HibernateDSLContext hdsl;
-    private final Select<Record> select;
+    private final Select<? extends Record> select;
+    private final HibernateQueryBuilder queryBuilder;
 
     private ResultTransformer resultTransformer;
     private boolean readOnly;
     private FlushMode flushMode;
     
-    DefaultHibernateSQLQuery(HibernateDSLContext hdsl, Select<Record> select) {
+    DefaultHibernateSQLQuery(HibernateDSLContext hdsl, Select<? extends Record> select, HibernateQueryBuilder queryBuilder) {
         super();
         this.hdsl = hdsl;
         this.select = select;
+        this.queryBuilder = queryBuilder;
         this.resultTransformer = Criteria.DISTINCT_ROOT_ENTITY; 
     }
     
     private Query buildQueryFromJooqStatement(
-            Select<Record> select)
+            Select<? extends Record> select)
     {
     	SQLQueryAnalyzer queryAnalyzer = new DefaultSQLQueryAnalyzer(hdsl);
     	queryAnalyzer.analyze(select);
 		
-        Set<HibernateRelation> hibernateRelations = hdsl.queryBuilder().findHibernateRelationship(queryAnalyzer);
+        Set<HibernateRelation> hibernateRelations = queryBuilder.findHibernateRelationship(queryAnalyzer);
         
         // Replace select statement after discovery tables
         Configuration configuration = JooqUtil.configuration(hdsl, new SelectAllVisitListener(hibernateRelations));
@@ -56,7 +59,7 @@ class DefaultHibernateSQLQuery implements HibernateSQLQuery {
         
         logger.debug(sql); 
 
-        Query query = hdsl.queryBuilder().buildQuery(sql, hibernateRelations);
+        Query query = queryBuilder.buildQuery(sql, hibernateRelations);
         
         query.setResultTransformer(resultTransformer);
         query.setReadOnly(readOnly);
@@ -69,7 +72,7 @@ class DefaultHibernateSQLQuery implements HibernateSQLQuery {
     }
     
     private Query buildQueryFromJooqStatementForCount(
-            Select<Record> select)
+            Select<? extends Record> select)
     {
 		Configuration configuration = JooqUtil.configuration(hdsl, new SelectCountVisitListener() );
         select.attach(configuration);
@@ -77,7 +80,7 @@ class DefaultHibernateSQLQuery implements HibernateSQLQuery {
         
         logger.debug(sql);
 
-        Query query = hdsl.queryBuilder().buildQueryForCount(sql);
+        Query query = queryBuilder.buildQueryForCount(sql);
 		return query;
     }
     
@@ -93,6 +96,16 @@ class DefaultHibernateSQLQuery implements HibernateSQLQuery {
     {
     	return buildQueryFromJooqStatement(select).list();
     }
+    
+	@Override
+	@SuppressWarnings("unchecked")
+	public <T> PartialList<T> subList(Integer start, Integer end) {
+		BigInteger count = (BigInteger) buildQueryFromJooqStatementForCount(select).list().get(0);
+		Query query = buildQueryFromJooqStatement(select)
+				.setFirstResult(start)
+				.setMaxResults(end - start);
+		return DefaultPartialList.newInstance(query.list(), count);
+	}
 
     @Override
     @SuppressWarnings("unchecked")

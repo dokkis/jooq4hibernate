@@ -10,6 +10,7 @@ import org.jooq.impl.DefaultVisitListener;
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Sets;
 
 /**
  * Replace the select into the form: select {table1.*}, {table2.*} from to
@@ -21,6 +22,7 @@ import com.google.common.collect.Iterables;
  */
 public class SelectAllVisitListener extends DefaultVisitListener {
 	private final Set<HibernateRelation> hibernateRelations;
+	public boolean selectFieldsReplaced = false;
 	
 	public SelectAllVisitListener(Set<HibernateRelation> hibernateRelations) {
 		super();
@@ -32,9 +34,11 @@ public class SelectAllVisitListener extends DefaultVisitListener {
 			VisitContext context)
 	{
 		Clause clause = context.clause();
-		if (clause == Clause.SELECT_SELECT) {
+        
+		if (!selectFieldsReplaced && clause == Clause.SELECT_SELECT) {
 			context.queryPart(DSL.queryPart(""));
 			context.renderContext().sql(buildSelectFields());
+			selectFieldsReplaced = true;
 		}
 	}
 
@@ -44,14 +48,14 @@ public class SelectAllVisitListener extends DefaultVisitListener {
 			throw new RuntimeException("No tables found.");
 		}
 		
-		Iterable<String> tableAlias = Iterables.transform(hibernateRelations, new Function<HibernateRelation, String>() {
+		Set<String> tableAlias = Sets.newLinkedHashSet(Iterables.transform(hibernateRelations, new Function<HibernateRelation, String>() {
 			@Override
 			public String apply(
 					HibernateRelation relation)
 			{
 				return String.format("{%s.*}", relation.getName());
 			}
-		});
+		}));
 
 		return Joiner.on(", ").join(tableAlias);
 	}

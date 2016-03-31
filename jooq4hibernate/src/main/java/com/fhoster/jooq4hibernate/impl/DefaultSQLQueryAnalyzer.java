@@ -1,8 +1,12 @@
-package com.fhoster.jooq4hibernate.impl;
+ package com.fhoster.jooq4hibernate.impl;
+
+import static org.jooq.Clause.SELECT_FROM;
+import static org.jooq.Clause.TABLE_JOIN_ON;
 
 import java.lang.reflect.Field;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.jooq.Clause;
@@ -11,14 +15,14 @@ import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Select;
 import org.jooq.Table;
+import org.jooq.TableField;
 import org.jooq.VisitContext;
 import org.jooq.impl.DSL;
 import org.jooq.impl.DefaultVisitListener;
 
 import com.fhoster.jooq4hibernate.HibernateDSLContext;
-import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 
 /**
  * Default implementation of SQLQueryAnalyzer using VisitListener.
@@ -38,138 +42,151 @@ import com.google.common.collect.Lists;
  * 
  */
 class DefaultSQLQueryAnalyzer extends DefaultVisitListener implements SQLQueryAnalyzer {
-	private Set<SQLTable>         tables         = new LinkedHashSet<SQLTable>();
-	private Set<SQLJoinCondition> joinConditions = new LinkedHashSet<SQLJoinCondition>();
-	private final HibernateDSLContext hdsl;
-	
-	public DefaultSQLQueryAnalyzer(HibernateDSLContext hdsl){
-		this.hdsl=hdsl;
-	}
-	
-	@Override
-	public void analyze(Select<Record> select) {
-		// FIXME remove LoggerDebugVisitListener
-		Configuration configuration = JooqUtil.configuration(hdsl, new LoggerDebugVisitListener(), this);
-		DSL.using(configuration).renderContext().visit(select); // Discovery tables and join conditions
-	}
-	
-	@SuppressWarnings("unchecked")
-	@Override
-	public void clauseStart(
-			VisitContext context)
-	{
-		Clause clause = context.clause();
-		QueryPart queryPart = context.queryPart();
+    private final Map<String, SQLTable>             tables         = new LinkedHashMap<String, SQLTable>();
+    private final Map<SQLTable, Set<SQLJoinCondition>>     joinConditions = new LinkedHashMap<SQLTable, Set<SQLJoinCondition>>();
+    private final HibernateDSLContext hdsl;
+    private boolean discoveryTableAndJoinConditions = true;
 
-		boolean clauseIsSelectFrom = Iterables.contains(Lists.newArrayList(context.clauses()), Clause.SELECT_FROM);
+    public DefaultSQLQueryAnalyzer(HibernateDSLContext hdsl) {
+        this.hdsl = hdsl;
+    }
 
-		if (clauseIsSelectFrom) {
-			if (clause == Clause.TABLE_REFERENCE) {
-				if(queryPart instanceof Table){ 
-					Table<?> table = (Table<?>) queryPart;
-					addTable(table);
-				} 
-				else{
-					//FIXME it can be also TableList (where do not exists join but if it's not defined an alias?)
-					List<Table<?>> tables = (List<Table<?>>) field(queryPart, "wrappedList");
+    @Override
+    public void analyze(
+        Select<? extends Record> select)
+    {
+        // FIXME remove LoggerDebugVisitListener
+        Configuration configuration = JooqUtil.configuration(hdsl, new LoggerDebugVisitListener(), this);
+        DSL.using(configuration).render(select); // Discovery tables and join conditions
+    }
+    
+    @Override
+    public void visitEnd(VisitContext context){
+    	Clause clause = context.clause();
+    	if(clause==Clause.SELECT_FROM){
+    		discoveryTableAndJoinConditions = false;
+    	}
+    }
+    
+    @Override
+    public void visitStart(
+        VisitContext context)
+    {
+        Clause clause = context.clause();
+        QueryPart queryPart = context.queryPart();
 
-					if(tables.size()!=1){ //FIXME is it possible? when and why?
-						throw new RuntimeException("Unsupported TableList != 1");
-					}
-					addTable(tables.get(0));
-				}
-			}
-			else if (clause == Clause.SCHEMA_REFERENCE) {
-				Table<?> table = (Table<?>) queryPart;
-				SQLTable sqlTable = Iterables.getLast(tables);
-				String tableName = table.getName();
-				sqlTable.setSchema(table.getSchema().getName());
-				sqlTable.setName(tableName);
-			}
-			else if (clause.equals(Clause.FIELD_REFERENCE)) {
-				// FIXME: is the only way to get this information?
-				org.jooq.Field<?> field1 = field(queryPart, "field1");
-				org.jooq.Field<?> field2 = field(queryPart, "field2");
-
-				Table<?> lhs = field(field1, "table");
-				Table<?> rhs = field(field2, "table");
-
-				SQLTable leftTable = getTableFromAlias(lhs.getName());
-				String leftColumn = field1.getName();
-				SQLTable rightTable = getTableFromAlias(rhs.getName());
-				String rightColumn = field2.getName();
-				SQLJoinCondition join = new SQLJoinCondition(leftTable, rightTable, leftColumn, rightColumn);
-				joinConditions.add(join);
-			}
-		}
-	}
-
-	private void addTable(Table<?> table) {
-		SQLTable sqlTable = new SQLTable();
-		if (isValidAlias(table)) {
-			sqlTable.setAlias(table.getName());
-		}
-		tables.add(sqlTable);
-	}
-
-	private boolean isValidAlias(
-			Table<?> table)
-	{
-		return !table.getName().equals("join"); // FIXME: jOOQ bug? table.getName() is 'join' when an alias is not defined
-	}
-
-	private SQLTable getTableFromAlias(
-			final String alias)
-	{
-		Iterable<SQLTable> filteredTables = Iterables.filter(tables, new Predicate<SQLTable>() {
-			@Override
-			public boolean apply(
-					SQLTable table)
-			{
-				return table.getAlias().equals(alias);
-			}
-		});
-		if (Iterables.size(filteredTables) == 0) {
-			throw new RuntimeException("No table found for alias " + alias);
-		}
-		else if (Iterables.size(filteredTables) != 1) {
-			throw new RuntimeException("Duplicate alias " + alias + " in the input query.");
-		}
-		return filteredTables.iterator().next();
-	}
-
-	@SuppressWarnings("unchecked")
-	private <T> T field(
-			Object obj,
-			String name)
-	{
-		try {
-			Field declaredField = obj.getClass().getDeclaredField(name);
-			declaredField.setAccessible(true);
-			T field = (T) declaredField.get(obj);
-			return field;
-		}
-		catch (Exception e) {
-			try{
-				Field declaredField = obj.getClass().getSuperclass().getDeclaredField(name);
-				declaredField.setAccessible(true);
-				T field = (T) declaredField.get(obj);
-				return field;
-			} catch(Exception ex){
-				throw new RuntimeException(ex);
-			}
-		}
+        Set<Clause> clauseList = Sets.newHashSet(context.clauses());
+        
+		boolean insideSelectFrom = Iterables.contains(clauseList, SELECT_FROM);
+        
+        if (discoveryTableAndJoinConditions && insideSelectFrom) {
+        	switch(clause)
+        	{
+		        	case TABLE_ALIAS:
+		        		Table<?> table = (Table<?>) queryPart;
+		        		SQLTable sqlTable = new SQLTable();
+		                String tableAlias = table.getName();
+		                sqlTable.setSchema(table.getSchema().getName());
+		                sqlTable.setAlias(tableAlias);
+		                context.data().put(SQLTable.class, sqlTable);
+		                break;
+		        	case TABLE_REFERENCE:
+		        		if(context.data().containsKey(SQLTable.class)){
+		        			sqlTable = (SQLTable) context.data().get(SQLTable.class);
+		        			table = (Table<?>) queryPart;
+		        			sqlTable.setName(table.getName());
+		        		} else{
+			            	table = (Table<?>) queryPart;
+			            	sqlTable = new SQLTable();
+			                String tableName = table.getName();
+			                sqlTable.setSchema(table.getSchema().getName());
+			                sqlTable.setName(tableName);
+		        		}
+		        		
+		        		context.data().remove(SQLTable.class);
+		        		
+		        		if(tables.containsKey(sqlTable.getAlias())){
+		        			throw new RuntimeException("Duplicate alias " + sqlTable.getAlias() + " in the input query.");
+		        		}
+		        		
+		        		tables.put(sqlTable.getAlias(), sqlTable);
+		        		break;
+		        	case CONDITION_COMPARISON:
+		        		boolean insideJoinOn = Iterables.contains(clauseList, TABLE_JOIN_ON);
+		                
+		        		if(insideJoinOn){
+			        		// FIXME: is the only way to get this information?
+			                org.jooq.Field<?> field1 = field(queryPart, "field1");
+			                org.jooq.Field<?> field2 = field(queryPart, "field2");
+			                
+			                //FIXME what if not? if field is value?
+			                if (TableField.class.isAssignableFrom(field1.getClass()) && TableField.class.isAssignableFrom(field2.getClass())) {
+			                    TableField<?, ?> tableField1 = TableField.class.cast(field1);
+			                    TableField<?, ?> tableField2 = TableField.class.cast(field2);
+			                    newJoinCondition(tableField1, tableField2);
+			                }
+		        		}
+		                break;
+	                default: 
+	                	break;
+	        	}
+        }
+    }
+    
+    private void newJoinCondition(TableField<?, ?> leftTableField, TableField<?, ?> rightTableField) {
+    	SQLTable sqlTable = Iterables.getLast(tables.values());
+    	Table<?> lTable = leftTableField.getTable();
+        Table<?> rTable = rightTableField.getTable();
+        
+        if(!tables.containsKey(lTable.getName())){
+        	throw new RuntimeException("No table found for alias " + lTable.getName());
+        }
+        else if(!tables.containsKey(rTable.getName())) {
+        	throw new RuntimeException("No table found for alias " + rTable.getName());
+        }
+        	
+        SQLTable leftTable = tables.get(lTable.getName());
+        String leftColumn = leftTableField.getName();
+        SQLTable rightTable = tables.get(rTable.getName());
+        String rightColumn = rightTableField.getName();
+    	
+    	final SQLJoinCondition joinCondition = new SQLJoinCondition(leftTable, rightTable, leftColumn, rightColumn);
+    	
+    	final Set<SQLJoinCondition> joins;
+    	if(joinConditions.containsKey(sqlTable)){
+    		joins = joinConditions.get(sqlTable);
+    	} else{
+    		joins = new LinkedHashSet<SQLJoinCondition>();
+			joinConditions.put(sqlTable, joins);
+    	}
+    	joins.add(joinCondition);
 	}
 
-	@Override
-	public Set<SQLTable> getTables()
-	{
-		return tables;
-	}
+    @SuppressWarnings("unchecked")
+    private <T> T field(
+        Object obj,
+        String name)
+    {
+        try {
+            Field declaredField = obj.getClass().getDeclaredField(name);
+            declaredField.setAccessible(true);
+            T field = (T) declaredField.get(obj);
+            return field;
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
 
-	@Override
-	public Set<SQLJoinCondition> getJoinConditions()
-	{
-		return joinConditions;
-	}
+    @Override
+    public Set<SQLTable> getTables()
+    {
+        return Sets.newHashSet(tables.values());
+    }
+
+    @Override
+    public Map<SQLTable, Set<SQLJoinCondition>> getJoinConditions()
+    {
+        return joinConditions;
+    }
 }

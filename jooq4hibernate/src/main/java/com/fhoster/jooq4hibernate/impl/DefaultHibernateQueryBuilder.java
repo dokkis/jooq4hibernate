@@ -26,7 +26,8 @@ class DefaultHibernateQueryBuilder implements HibernateQueryBuilder {
 
     @Override
     public Set<HibernateRelation> findHibernateRelationship(SQLQueryAnalyzer sqlQueryAnalyzer){
-    	return HibernateUtil.findHibernateRelationship(session.getSessionFactory(), sqlQueryAnalyzer.getTables(), sqlQueryAnalyzer.getJoinConditions());
+    	HibernateUtil hibernateUtil = HibernateUtil.using(session.getSessionFactory());
+    	return hibernateUtil.findHibernateRelationship(sqlQueryAnalyzer.getTables(), sqlQueryAnalyzer.getJoinConditions());
     }
     
     @Override
@@ -34,7 +35,7 @@ class DefaultHibernateQueryBuilder implements HibernateQueryBuilder {
         String sql, Set<HibernateRelation> hibernateRelations)
     {
         if(logger.isDebugEnabled()){ // To avoid unnecessary elaboration in building SQLQuery
-        	logger.debug(HibernateUtil.buildHibernateQueryExecution(hibernateRelations));
+        	logger.debug(HibernateQueryRender.render(sql, hibernateRelations));
         }
         
         SQLQuery query = session.createSQLQuery(sql);

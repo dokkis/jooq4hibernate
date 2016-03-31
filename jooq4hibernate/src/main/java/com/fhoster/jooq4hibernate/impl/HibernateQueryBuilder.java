@@ -4,7 +4,7 @@ import java.util.Set;
 
 import org.hibernate.Query;
 
-public interface HibernateQueryBuilder {
+interface HibernateQueryBuilder {
 
 	public Set<HibernateRelation> findHibernateRelationship(SQLQueryAnalyzer sqlQueryAnalyzer);
 	    

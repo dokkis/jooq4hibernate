@@ -10,8 +10,10 @@ import java.util.List;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.jooq.Record;
+import org.jooq.DSLContext;
+import org.jooq.Record1;
 import org.jooq.Select;
+import org.jooq.SelectConditionStep;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -31,11 +33,13 @@ public abstract class AbstractHibernateDSLContextTest {
 
 	final Employee e1; 
 	final Address a1;
+	final Employee innerE; 
 	
-	public AbstractHibernateDSLContextTest(Employee e1, Address a1) {
+	public AbstractHibernateDSLContextTest(Employee e1, Address a1, Employee innerE) {
 		super();
 		this.e1 = e1;
 		this.a1 = a1;
+		this.innerE = innerE;
 	}
 	
 	@BeforeClass
@@ -58,14 +62,14 @@ public abstract class AbstractHibernateDSLContextTest {
 	
 	@Test
 	public void testCount(){
-		Select<Record> select = hdsl.select().from(e1);
+		Select<?> select = hdsl.select().from(e1);
 		BigInteger count = hdsl.createQuery(select).count();
 		assertThat(count.intValue()).isEqualTo(2);
 	}
 	
 	@Test
-	public void testRootEntityListWithoutJoin(){
-		Select<Record> select = hdsl.select().from(e1);
+	public void testListWithoutJoin(){
+		Select<?> select = hdsl.select().from(e1);
 		List<com.fhoster.jooq4hibernate.hibernate.Employee> employees = hdsl.createQuery(select).list();
 		assertThat(employees.size()).isEqualTo(2);
 		
@@ -77,7 +81,7 @@ public abstract class AbstractHibernateDSLContextTest {
 	
 	@Test
 	public void testCountThenSelectAll(){
-		Select<Record> select = hdsl.select().from(e1);
+		Select<?> select = hdsl.select().from(e1);
 		HibernateSQLQuery query = hdsl.createQuery(select);
 		BigInteger count = query.count();
 		List<com.fhoster.jooq4hibernate.hibernate.Employee> employees = query.list();
@@ -86,8 +90,8 @@ public abstract class AbstractHibernateDSLContextTest {
 	}
 	
 	@Test
-	public void testRootEntityUniqueResultWithoutJoin(){
-		Select<Record> select = hdsl.select().from(e1).where(e1.ID_EMPLOYEE.eq(1L));
+	public void testUniqueResultWithoutJoin(){
+		Select<?> select = hdsl.select().from(e1).where(e1.ID_EMPLOYEE.eq(1L));
 		com.fhoster.jooq4hibernate.hibernate.Employee employee = hdsl.createQuery(select).uniqueResult();
 
 		assertLazyFetch(employee.getCurrentAddress());
@@ -95,8 +99,8 @@ public abstract class AbstractHibernateDSLContextTest {
 	}
 	
 	@Test
-	public void testRootEntityUniqueResultDoubleAssociationFirstJoinFetched(){
-		Select<Record> select = hdsl.select().from(e1)
+	public void testUniqueResultDoubleAssociationFirstJoinFetched(){
+		Select<?> select = hdsl.select().from(e1)
 				.join(a1).on(a1.ID_ADDRESS.eq(e1.CURRENT_ADDRESS_ID))
 				.where(e1.ID_EMPLOYEE.eq(1L));
 		
@@ -106,8 +110,8 @@ public abstract class AbstractHibernateDSLContextTest {
 	}
 	
 	@Test
-	public void testRootEntityUniqueResultDoubleAssociationSecondJoinFetched(){
-		Select<Record> select = hdsl.select().from(e1)
+	public void testUniqueResultDoubleAssociationSecondJoinFetched(){
+		Select<?> select = hdsl.select().from(e1)
 				.join(a1).on(a1.ID_ADDRESS.eq(e1.PERMANENT_ADDRESS_ID))
 				.where(e1.ID_EMPLOYEE.eq(1L));
 		
@@ -117,8 +121,8 @@ public abstract class AbstractHibernateDSLContextTest {
 	}
 	
 	@Test
-	public void testRootEntityUniqueResultDoubleAssociationBothJoinFetched(){
-		Select<Record> select = hdsl.select().from(e1)
+	public void testUniqueResultDoubleAssociationBothJoinFetched(){
+		Select<?> select = hdsl.select().from(e1)
 				.join(a1).on(a1.ID_ADDRESS.eq(e1.PERMANENT_ADDRESS_ID).or(a1.ID_ADDRESS.eq(e1.CURRENT_ADDRESS_ID)))
 				.where(e1.ID_EMPLOYEE.eq(1L));
 		
@@ -128,8 +132,8 @@ public abstract class AbstractHibernateDSLContextTest {
 	}
 	
 	@Test
-	public void testRootEntityListDoubleAssociationFirstJoinFetched(){
-		Select<Record> select = hdsl.select().from(e1)
+	public void testListDoubleAssociationFirstJoinFetched(){
+		Select<?> select = hdsl.select().from(e1)
 				.join(a1).on(a1.ID_ADDRESS.eq(e1.CURRENT_ADDRESS_ID))
 				.where(e1.ID_EMPLOYEE.eq(1L));
 		
@@ -141,8 +145,8 @@ public abstract class AbstractHibernateDSLContextTest {
 	}
 	
 	@Test
-	public void testRootEntityListDoubleAssociationSecondJoinFetched(){
-		Select<Record> select = hdsl.select().from(e1)
+	public void testListDoubleAssociationSecondJoinFetched(){
+		Select<?> select = hdsl.select().from(e1)
 				.join(a1).on(a1.ID_ADDRESS.eq(e1.PERMANENT_ADDRESS_ID))
 				.where(e1.ID_EMPLOYEE.eq(1L));
 		
@@ -154,8 +158,8 @@ public abstract class AbstractHibernateDSLContextTest {
 	}
 	
 	@Test
-	public void testRootEntityListDoubleAssociationBothJoinFetched(){
-		Select<Record> select = hdsl.select().from(e1)
+	public void testListDoubleAssociationBothJoinFetched(){
+		Select<?> select = hdsl.select().from(e1)
 				.join(a1).on(a1.ID_ADDRESS.eq(e1.PERMANENT_ADDRESS_ID).or(a1.ID_ADDRESS.eq(e1.CURRENT_ADDRESS_ID)))
 				.where(e1.ID_EMPLOYEE.eq(1L));
 		
@@ -165,8 +169,53 @@ public abstract class AbstractHibernateDSLContextTest {
 			assertEagerFetch(employee.getCurrentAddress());
 		}
 	}
+
+	@Test
+	public void testListWithSomeJoinConditionsContainsValue(){
+		
+	}
 	
-	/* TODO 
+	@Test
+	public void testListWithMoreJoinConditionsThanForeignKey(){
+		
+	}
+	
+	@Test
+	public void testListWithLessJoinConditionsThanForeignKey(){
+		//TODO: needs of Entity with at least 2 foreign key column as association
+	}
+	
+	@Test
+	public void testListWithInnerQueryOnWhere(){
+		DSLContext jooqContext = hdsl.jooqContext();
+		SelectConditionStep<Record1<Long>> innerSelect = jooqContext.select(innerE.ID_EMPLOYEE).from(innerE).where(innerE.ID_EMPLOYEE.eq(1L));
+		
+		Select<?> select = hdsl.select().from(e1)
+				.join(a1).on(a1.ID_ADDRESS.eq(e1.PERMANENT_ADDRESS_ID).or(a1.ID_ADDRESS.eq(e1.CURRENT_ADDRESS_ID)))
+				.where(e1.ID_EMPLOYEE.in(
+						innerSelect
+				));
+		
+		List<com.fhoster.jooq4hibernate.hibernate.Employee> employees = hdsl.createQuery(select).list();
+		for(com.fhoster.jooq4hibernate.hibernate.Employee employee : employees){
+			assertEagerFetch(employee.getPermanentAddress());
+			assertEagerFetch(employee.getCurrentAddress());
+		}
+	}
+	
+	@Test
+	public void testCountWithInnerQueryOnWhere(){
+		DSLContext jooqContext = hdsl.jooqContext();
+		SelectConditionStep<Record1<Long>> innerSelect = jooqContext.select(e1.ID_EMPLOYEE).from(e1).where(e1.ID_EMPLOYEE.eq(1L));
+		
+		Select<?> select = hdsl.select().from(e1)
+				.where(e1.ID_EMPLOYEE.in( innerSelect ));
+		
+		BigInteger count = hdsl.createQuery(select).count();
+		assertThat(count.intValue()).isEqualTo(1);
+	}
+	
+	/* TODO more test needed
 	 	review and expand the test domain
 	 	review and fill the database setup
 	other tests:

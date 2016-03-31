@@ -34,17 +34,23 @@ class DefaultHibernateDSLContext implements HibernateDSLContext {
     }
 
     @Override
-    public SelectSelectStep<Record> select()
+    public SelectSelectStep<? extends Record> select()
     {
         DSLContext dslContext = DSL.using(connection, settings.jooqSettings());
         return dslContext.select();
     }
+    
+    @Override
+    public DSLContext jooqContext(){
+    	DSLContext dslContext = DSL.using(connection, settings.jooqSettings());
+        return dslContext;
+    }
 
     @Override
     public HibernateSQLQuery createQuery(
-        Select<Record> select)
+        Select<? extends Record> select)
     {
-        final HibernateSQLQuery query = new DefaultHibernateSQLQuery(this, select);
+        final HibernateSQLQuery query = new DefaultHibernateSQLQuery(this, select, queryBuilder);
         return query;
     }
 
@@ -54,7 +60,6 @@ class DefaultHibernateDSLContext implements HibernateDSLContext {
         return settings;
     }
     
-    @Override
     public HibernateQueryBuilder queryBuilder(){
     	return queryBuilder;
     }

@@ -8,14 +8,18 @@ import org.jooq.impl.DefaultVisitListener;
 public class SelectCountVisitListener extends DefaultVisitListener {
 	public static final String COUNT_AS = "num";
 	
+	public boolean countReplaced = false;
+	
 	@Override
 	public void visitStart(
 			VisitContext context)
 	{
 		Clause clause = context.clause();
-		if (clause == Clause.SELECT_SELECT) {
+        
+		if (!countReplaced && clause == Clause.SELECT_SELECT) {
 			context.queryPart(DSL.queryPart(""));
 			context.renderContext().sql(String.format("count(*) as %s", COUNT_AS));
+			countReplaced = true;
 		}
 	}
 }

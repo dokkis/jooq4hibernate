@@ -29,10 +29,21 @@ import org.hibernate.transform.ResultTransformer;
  */
 public interface HibernateSQLQuery {
 
-    /**
+	/**
      * @return list of entities
      */
     public <T> List<T> list();
+    
+    /**
+     * @return sublist of entities
+     */
+    /**
+     * 
+     * @param start number of first result (starting from 0)
+     * @param end number of the last result
+     * @return a partial list cointaining the list and the totalSize
+     */
+    public <T> PartialList<T> subList(Integer start, Integer end);
 
     /**
      * @return unique entity

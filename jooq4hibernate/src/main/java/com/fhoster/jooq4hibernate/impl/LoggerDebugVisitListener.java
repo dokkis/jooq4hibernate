@@ -68,10 +68,10 @@ class LoggerDebugVisitListener extends DefaultVisitListener {
         QueryPart queryPart = context.queryPart();
         if (queryPart instanceof Table) {
             Table<?> table = (Table<?>) queryPart;
-            str.append(String.format("%s, %s, %s, %s", clause, table.getName(), table.getSchema(), queryPart));
+            str.append(String.format("%s, %s, %s, %s, %s", clause, table.getName(), table.getSchema(), queryPart, queryPart.getClass()));
         }
         else {
-            str.append(String.format("%s", clause));
+            str.append(String.format("%s, %s", clause, queryPart.getClass()));
         }
 
         logger.trace(str.toString());

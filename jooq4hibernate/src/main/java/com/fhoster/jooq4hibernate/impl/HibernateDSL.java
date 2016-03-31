@@ -20,7 +20,7 @@ public class HibernateDSL {
                 Connection connection)
                     throws SQLException
             {
-                HibernateSettings settings = new HibernateSettings(JooqUtil.settings());
+                DefaultHibernateSettings settings = new DefaultHibernateSettings(JooqUtil.settings());
                 return using(session, settings);
             }
         });

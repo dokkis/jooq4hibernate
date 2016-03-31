@@ -1,11 +1,10 @@
 package com.fhoster.jooq4hibernate;
 
+import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.SQLDialect;
 import org.jooq.Select;
 import org.jooq.SelectSelectStep;
-
-import com.fhoster.jooq4hibernate.impl.HibernateQueryBuilder;
 
 /**
  * HibernateDSLContext is the entry point of jooq4hibernate.
@@ -30,14 +29,15 @@ import com.fhoster.jooq4hibernate.impl.HibernateQueryBuilder;
  */
 public interface HibernateDSLContext {
 
-    public SelectSelectStep<Record> select();
+    public SelectSelectStep<? extends Record> select();
+    
+    public DSLContext jooqContext();
 
     public HibernateSQLQuery createQuery(
-        Select<Record> select);
+        Select<? extends Record> select);
     
     public HibernateSettings settings();
     
-    public HibernateQueryBuilder queryBuilder();
-    
     public SQLDialect dialect();
+
 }

@@ -1,7 +1,6 @@
 package com.fhoster.jooq4hibernate.impl;
 
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -21,77 +20,92 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 
-abstract class HibernateUtil {
+class HibernateUtil {
 
     private final static Logger logger = LoggerFactory.getLogger(HibernateUtil.class);
+    private final static String DOT                     = ".";
 
-    protected static Set<HibernateRelation> findHibernateRelationship(
-        SessionFactory sessionFactory,
+    private final SessionFactory sessionFactory;
+    
+    HibernateUtil(SessionFactory sessionFactory) {
+		this.sessionFactory = sessionFactory;
+	}
+    
+    protected static HibernateUtil using(SessionFactory sessionFactory){
+    	return new HibernateUtil(sessionFactory);
+    }
+
+	protected Set<HibernateRelation> findHibernateRelationship(
         Set<SQLTable> tables,
-        Set<SQLJoinCondition> joinConditions)
+        Map<SQLTable, Set<SQLJoinCondition>> joinConditions)
     {
+    	logger.debug("JoinConditionMap: "+joinConditions);
+    	
         Set<HibernateRelation> hibernateRelations = new LinkedHashSet<HibernateRelation>();
         Set<String> aliasList = new LinkedHashSet<String>();
 
         SQLTable rootTable = Iterables.get(tables, 0);
 
-        AbstractEntityPersister entityRoot = getEntityClass(sessionFactory, rootTable.getSchema(), rootTable.getName());
+        AbstractEntityPersister entityRoot = getEntityClass(rootTable.getSchema(), rootTable.getName());
         aliasList.add(rootTable.getAlias());
 
         HibernateRelation rootHibernateRelation = new HibernateRelation(rootTable.getAlias(), rootTable.getAlias(), entityRoot.getMappedClass());
         hibernateRelations.add(rootHibernateRelation);
 
-        for (SQLJoinCondition join : joinConditions) {
-            SQLTable leftTable = join.getLeftTable();
-            SQLTable rightTable = join.getRightTable();
+        for(SQLTable table : joinConditions.keySet()){
+			for (SQLJoinCondition join : joinConditions.get(table)) {
+				SQLTable leftTable = join.getLeftTable();
+	            SQLTable rightTable = join.getRightTable();
 
-            System.out.println("Analyze join between " + leftTable + " and " + rightTable);
+	            logger.debug("Analyze join between " + leftTable + " and " + rightTable);
 
-            SQLTable primary = null;
-            SQLTable secondary = null;
-            String joinColumn = null;
+	            SQLTable primary = null;
+	            SQLTable secondary = null;
+	            String joinColumn = null;
 
-            if (aliasList.contains(leftTable.getAlias())) {
-                primary = leftTable;
-                secondary = rightTable;
-                joinColumn = join.getLeftColumn();
-            }
-            else if (aliasList.contains(rightTable.getAlias())) {
-                primary = rightTable;
-                secondary = leftTable;
-                joinColumn = join.getRightColumn();
-            }
+	            if (aliasList.contains(leftTable.getAlias())) {
+	                primary = leftTable;
+	                secondary = rightTable;
+	                joinColumn = join.getLeftColumn();
+	            }
+	            else if (aliasList.contains(rightTable.getAlias())) {
+	                primary = rightTable;
+	                secondary = leftTable;
+	                joinColumn = join.getRightColumn();
+	            }
 
-            if (primary == null || secondary == null) {
-                logger.warn("No relationship found for the JoinCondition " + join);
-            }
+	            if (primary == null || secondary == null) {
+	                logger.warn("No relationship found for the JoinCondition " + join);
+	            }
 
-            String primaryAlias = primary.getAlias();
-            String secondaryAlias = secondary.getAlias();
-            AbstractEntityPersister primaryEntity = getEntityClass(sessionFactory, primary.getSchema(), primary.getName());
-            AbstractEntityPersister secondaryEntity = getEntityClass(sessionFactory, secondary.getSchema(), secondary.getName());
+	            String primaryAlias = primary.getAlias();
+	            String secondaryAlias = secondary.getAlias();
+	            AbstractEntityPersister primaryEntity = getEntityClass(primary.getSchema(), primary.getName());
+	            AbstractEntityPersister secondaryEntity = getEntityClass(secondary.getSchema(), secondary.getName());
 
-            aliasList.add(secondaryAlias);
-            Set<String> relations = findRelationProperties(sessionFactory, primaryEntity, secondaryEntity, joinColumn);
+	            //FIXME: instead of taking consideration of joinConditions alone, take care of the group of join conditions related to a SQLTable
+	            Set<String> relations = findRelationProperties(primaryEntity, secondaryEntity, joinColumn);
 
-            if (relations.isEmpty()) {
-                logger.warn("Join Condition found but not mapped in HibernateRelation: " + join);
-            }
+	            if (relations.isEmpty()) {
+	                logger.warn("Join Condition found but not mapped in HibernateRelation: " + join);
+	            }
 
-            for (String relationProperty : relations) {
-                String relationPath = Joiner.on(DOT).join(primaryAlias, relationProperty);
-                HibernateRelation hibernateRelation = new HibernateRelation(secondaryAlias, relationPath, secondaryEntity.getMappedClass());
-                hibernateRelations.add(hibernateRelation);
-            }
-        }
+	            for (String relationProperty : relations) {
+	                String relationPath = Joiner.on(DOT).join(primaryAlias, relationProperty);
+	                HibernateRelation hibernateRelation = new HibernateRelation(secondaryAlias, relationPath, secondaryEntity.getMappedClass());
+	                hibernateRelations.add(hibernateRelation);
+	            }
+			}
+			
+			aliasList.add(table.getAlias());
+		}
 
-        System.out.println("HibernateRelations found: " + hibernateRelations);
+        logger.debug("HibernateRelations found: " + hibernateRelations);
 
         return hibernateRelations;
     }
 
-    protected static Set<String> findRelationProperties(
-    	final SessionFactory sessionFactory,
+    protected Set<String> findRelationProperties(
         final AbstractEntityPersister primaryEntity,
         final AbstractEntityPersister secondaryEntityToResearch,
         final String primaryJoinColumn)
@@ -102,21 +116,25 @@ abstract class HibernateUtil {
 
         String[] propertyNames = primaryEntity.getPropertyNames();
         for (String propertyName : propertyNames) {
-            Class<?> cls = getPropertyClass(sessionFactory, primaryEntity, propertyName);
+            Class<?> cls = getPropertyClass(primaryEntity, propertyName);
 
-            if (existsEntityClass(sessionFactory, cls)) {
-                AbstractEntityPersister persister = getEntityClass(sessionFactory, cls);
+            if (existsEntityClass(cls)) {
+                AbstractEntityPersister persister = getEntityClass(cls);
                 String tableName = persister.getTableName();
                 if (tableName.equals(tableNameToResearch)) {
-                	
-                	List<String> joinColumns = Lists.newArrayList(primaryEntity.getPropertyColumnNames(propertyName));
-                	boolean containsJoinColumn = Iterables.size(Iterables.filter(joinColumns, new Predicate<String>() {
-						@Override
-						public boolean apply(String column) {
-							return column.equalsIgnoreCase(primaryJoinColumn);
-						}
-					})) > 0;
-                	
+
+                    List<String> joinColumns = Lists.newArrayList(primaryEntity.getPropertyColumnNames(propertyName));
+                    // FIXME we have to assure that join conditions cover all the foreign key column, if not don't generate relation and print a warning log
+                    // I have to represent SQLJoinConditions maybe with Map<SQLTable, List<SQLJoinConditions>> to do that easily
+                    boolean containsJoinColumn = Iterables.size(Iterables.filter(joinColumns, new Predicate<String>() {
+                        @Override
+                        public boolean apply(
+                            String column)
+                        {
+                            return column.equalsIgnoreCase(primaryJoinColumn);
+                        }
+                    })) > 0;
+
                     if (containsJoinColumn) {
                         relations.add(propertyName);
                     }
@@ -127,8 +145,7 @@ abstract class HibernateUtil {
         return relations;
     }
 
-    protected static AbstractEntityPersister getEntityClass(
-        SessionFactory sessionFactory,
+    protected AbstractEntityPersister getEntityClass(
         String schema,
         String tableName)
     {
@@ -146,11 +163,10 @@ abstract class HibernateUtil {
         throw new RuntimeException("No entity found for table " + tableName);
     }
 
-    protected static AbstractEntityPersister getEntityClass(
-        SessionFactory sessionFactory,
+    protected AbstractEntityPersister getEntityClass(
         Class<?> cls)
     {
-        AbstractEntityPersister entity = findEntityFromClass(sessionFactory, cls);
+        AbstractEntityPersister entity = findEntityFromClass(cls);
 
         if (entity == null) {
             throw new RuntimeException("No entity found for class " + cls.getName());
@@ -166,8 +182,7 @@ abstract class HibernateUtil {
     //        return defaultSchemaName;
     //    }
 
-    private static AbstractEntityPersister findEntityFromClass(
-        SessionFactory sessionFactory,
+    private AbstractEntityPersister findEntityFromClass(
         Class<?> cls)
     {
         ClassMetadata metadata = sessionFactory.getClassMetadata(cls);
@@ -178,15 +193,13 @@ abstract class HibernateUtil {
         return null;
     }
 
-    private static boolean existsEntityClass(
-        SessionFactory sessionFactory,
+    private boolean existsEntityClass(
         Class<?> cls)
     {
-        return findEntityFromClass(sessionFactory, cls) != null;
+        return findEntityFromClass(cls) != null;
     }
 
-    private static Class<?> getPropertyClass(
-        SessionFactory sessionFactory,
+    private Class<?> getPropertyClass(
         AbstractEntityPersister entity,
         String property)
     {
@@ -198,45 +211,5 @@ abstract class HibernateUtil {
             cls = collType.getElementType((SessionFactoryImplementor) sessionFactory).getReturnedClass();
         }
         return cls;
-    }
-
-    protected final static String RN                      = "\r\n";
-    protected final static String RNTAB                   = RN + "\t";
-    protected final static String QUERY_LIST              = "Query query = session.createSQLQuery(sql)";
-    protected final static String QUERY_ADDENTITY         = ".addEntity(\"%s\", %s.class)";
-    protected final static String QUERY_ADDJOIN           = ".addJoin(\"%s\", \"%s\")";
-    protected final static String QUERY_RESULTTRANSFORMER = ".setResultTransformer( Criteria.DISTINCT_ROOT_ENTITY );";
-    protected final static String QUERY_RESULT            = "List<%s> queryResult = query.list();";
-    protected final static String DOT                     = ".";
-    protected final static String SELECT_ALIAS            = "{%s.*}, ";
-    protected final static String SELECT_FROM             = "select %s from";
-    protected final static String ALL_CHAR                = ".*?";
-
-    protected static String buildHibernateQueryExecution(
-        Set<HibernateRelation> hibernateRelations)
-    {
-        StringBuilder hibernateQueryExec = new StringBuilder();
-        Iterator<HibernateRelation> iterator = hibernateRelations.iterator();
-
-        hibernateQueryExec.append(QUERY_LIST);
-        hibernateQueryExec.append(RNTAB);
-        HibernateRelation root = iterator.next();
-        hibernateQueryExec.append(String.format(QUERY_ADDENTITY, root.getName(), root.getCls().getSimpleName()));
-
-        while (iterator.hasNext()) {
-            HibernateRelation hibernateRelation = iterator.next();
-            hibernateQueryExec.append(RNTAB);
-            hibernateQueryExec.append(String.format(QUERY_ADDJOIN, hibernateRelation.getName(), hibernateRelation.getPath()));
-        }
-
-        hibernateQueryExec.append(RNTAB);
-        hibernateQueryExec.append(String.format(QUERY_ADDENTITY, root.getName(), root.getCls().getSimpleName()));
-        hibernateQueryExec.append(RNTAB);
-
-        hibernateQueryExec.append(QUERY_RESULTTRANSFORMER);
-        hibernateQueryExec.append(RN);
-        hibernateQueryExec.append(String.format(QUERY_RESULT, root.getCls().getSimpleName()));
-
-        return hibernateQueryExec.toString();
     }
 }
