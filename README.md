@@ -1,4 +1,4 @@
-#Jooq4Hibernate project:
+#Jooq4Hibernate
 
 This prototypal project born with these two consideration in mind:
 	- jOOQ can used to only generate SQL Code (.getSQL() method)
